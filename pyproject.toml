@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "system-house-renderer"
+version = "0.1.0"
+description = "Render system topology and Dify workflows as deterministic house-like spatial maps."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+  { name = "hiro-collab" }
+]
+dependencies = []
+
+[project.optional-dependencies]
+yaml = ["PyYAML>=6"]
+dev = []
+
+[project.scripts]
+system-house-renderer = "system_house_renderer.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

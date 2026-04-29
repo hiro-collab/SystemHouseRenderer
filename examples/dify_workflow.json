@@ -1,0 +1,85 @@
+{
+  "app": {
+    "id": "sample-dify-app",
+    "name": "Sample Dify Workflow"
+  },
+  "workflow": {
+    "graph": {
+      "nodes": [
+        {
+          "id": "start",
+          "type": "custom",
+          "data": {
+            "type": "start",
+            "title": "User Request"
+          }
+        },
+        {
+          "id": "classify",
+          "type": "custom",
+          "data": {
+            "type": "if-else",
+            "title": "Route Request"
+          }
+        },
+        {
+          "id": "rag",
+          "type": "custom",
+          "data": {
+            "type": "knowledge-retrieval",
+            "title": "Search Knowledge"
+          }
+        },
+        {
+          "id": "llm",
+          "type": "custom",
+          "data": {
+            "type": "llm",
+            "title": "Draft Answer",
+            "prompt_template": "Use retrieved context to answer."
+          }
+        },
+        {
+          "id": "tool",
+          "type": "custom",
+          "data": {
+            "type": "http-request",
+            "title": "External Inventory API",
+            "api_key": "sk-test-secret-value"
+          }
+        },
+        {
+          "id": "answer",
+          "type": "custom",
+          "data": {
+            "type": "answer",
+            "title": "Final Response"
+          }
+        }
+      ],
+      "edges": [
+        { "id": "e1", "source": "start", "target": "classify" },
+        { "id": "e2", "source": "classify", "target": "rag" },
+        { "id": "e3", "source": "rag", "target": "llm" },
+        { "id": "e4", "source": "classify", "target": "tool", "sourceHandle": "external" },
+        { "id": "e5", "source": "tool", "target": "llm" },
+        { "id": "e6", "source": "llm", "target": "answer" }
+      ]
+    }
+  },
+  "runtime": {
+    "events": [
+      { "nodeId": "start" },
+      { "nodeId": "classify" },
+      { "nodeId": "rag" },
+      { "nodeId": "llm" },
+      { "nodeId": "answer" }
+    ]
+  },
+  "requirements": {
+    "requiredComponentKinds": ["input", "llm", "output"],
+    "requiredFlows": [
+      { "from": "start", "to": "classify" }
+    ]
+  }
+}

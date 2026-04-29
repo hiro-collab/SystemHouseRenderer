@@ -1,0 +1,62 @@
+{
+  "system": {
+    "id": "sword-voice-agent-outline",
+    "name": "Sword Voice Agent Outline"
+  },
+  "components": [
+    {
+      "id": "mediapipe",
+      "label": "MediaPipe UDP publisher",
+      "kind": "input",
+      "summary": "Gesture detector sends sword sign state."
+    },
+    {
+      "id": "gesture_receiver",
+      "label": "Gesture UDP receiver",
+      "kind": "tool",
+      "summary": "Validates gesture payload and updates status."
+    },
+    {
+      "id": "input_gate",
+      "label": "Input gate",
+      "kind": "condition",
+      "summary": "Decides when microphone input is enabled."
+    },
+    {
+      "id": "ai_talk_core",
+      "label": "ai_talk_core handoff",
+      "kind": "tool",
+      "summary": "Owns recording, STT, transcript, and command."
+    },
+    {
+      "id": "dify",
+      "label": "Dify API",
+      "kind": "external",
+      "summary": "Receives chat message request and returns answer."
+    },
+    {
+      "id": "tts",
+      "label": "TTS service",
+      "kind": "tool",
+      "summary": "Reads response chunks."
+    },
+    {
+      "id": "console",
+      "label": "Integration console",
+      "kind": "output",
+      "summary": "Projects status and event stream."
+    }
+  ],
+  "flows": [
+    { "from": "mediapipe", "to": "gesture_receiver", "kind": "event" },
+    { "from": "gesture_receiver", "to": "input_gate", "kind": "control" },
+    { "from": "input_gate", "to": "ai_talk_core", "kind": "control" },
+    { "from": "ai_talk_core", "to": "dify", "kind": "external" },
+    { "from": "dify", "to": "tts", "kind": "data" },
+    { "from": "dify", "to": "console", "kind": "data" },
+    { "from": "gesture_receiver", "to": "console", "kind": "data" }
+  ],
+  "requirements": {
+    "requiredComponentKinds": ["input", "condition", "external", "output"]
+  }
+}
