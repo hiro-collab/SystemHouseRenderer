@@ -194,6 +194,41 @@ python -m system_house_renderer map `
 - `--mode`: `overview` / `tour` / `trace` / `debug` / `cost` / `security`。
 - `--detail-level`: `simple` / `normal` / `deep`。
 - `--language`: `ja` / `en`。
+- `--runtime-status-file`: 統合ランチャー向けの短命CLI status JSONを書きます。
+
+## Runtime Status
+
+SystemHouseRenderer は短命CLIなので、HTTP `/health` や `POST /shutdown` は実装していません。将来 watch/server mode を追加する場合は、長時間プロセス向けの共通停止契約に従う必要があります。
+
+現時点では、統合起動側が実行状態を把握しやすいよう、任意で `--runtime-status-file` を指定できます。
+
+```powershell
+python -m system_house_renderer map `
+  --input examples\dify_workflow.json `
+  --out out\house-map `
+  --runtime-status-file out\system-house-status.json
+```
+
+status file には次のようなJSONを書きます。
+
+```json
+{
+  "module": "system_house_renderer.map",
+  "pid": 1234,
+  "parent_pid": 1000,
+  "started_at": "2026-04-29T00:00:00+00:00",
+  "host": null,
+  "port": null,
+  "health_url": null,
+  "shutdown_url": null,
+  "shutdown_command": null,
+  "command_line": ["system-house-renderer", "map", "..."],
+  "state": "stopped",
+  "uptime_s": 0.123
+}
+```
+
+正常終了時は `state: "stopped"`、例外終了時は `state: "failed"` を書きます。status file は削除しません。
 
 ## テスト
 

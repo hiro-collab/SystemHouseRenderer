@@ -3,9 +3,11 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import sys
 from typing import Any
 
 from system_house_renderer.pipeline import render_file, write_render_output
+from system_house_renderer.runtime_status import RuntimeStatusWriter
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -54,12 +56,22 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print generated file paths as JSON.",
     )
+    map_parser.add_argument(
+        "--runtime-status-file",
+        default="",
+        help=(
+            "Optional JSON status file for integration launchers. "
+            "SystemHouseRenderer is short-lived, so no health or shutdown endpoint is exposed."
+        ),
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
+    command_line = list(sys.argv) if argv is None else ["system-house-renderer", *argv]
     args = parser.parse_args(argv)
+    setattr(args, "command_line", command_line)
     if args.command == "map":
         return run_map(args)
     parser.print_help()
@@ -67,29 +79,44 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def run_map(args: argparse.Namespace) -> int:
+    status_writer = RuntimeStatusWriter(
+        args.runtime_status_file or None,
+        module="system_house_renderer.map",
+        command_line=getattr(args, "command_line", list(sys.argv)),
+    )
+    status_writer.write_running()
     view_options: dict[str, Any] = {
         "mode": args.mode,
         "metaphor": args.metaphor,
         "detailLevel": args.detail_level,
         "language": args.language,
     }
-    output = render_file(
-        args.input or None,
-        runtime_path=args.runtime or None,
-        runtime_adapter=args.runtime_adapter,
-        turn_id=args.turn_id or None,
-        requirements_path=args.requirements or None,
-        view_options=view_options,
-    )
-    files = write_render_output(output, args.out)
-    if args.print_files:
-        print(
-            json.dumps(
-                {key: str(path) for key, path in files.items()},
-                ensure_ascii=False,
-                indent=2,
-            )
+    try:
+        output = render_file(
+            args.input or None,
+            runtime_path=args.runtime or None,
+            runtime_adapter=args.runtime_adapter,
+            turn_id=args.turn_id or None,
+            requirements_path=args.requirements or None,
+            view_options=view_options,
         )
-    else:
-        print(f"generated SystemHouseRenderer output in {Path(args.out)}")
+        files = write_render_output(output, args.out)
+        if args.print_files:
+            print(
+                json.dumps(
+                    {key: str(path) for key, path in files.items()},
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+        else:
+            print(f"generated SystemHouseRenderer output in {Path(args.out)}")
+    except KeyboardInterrupt:
+        status_writer.write_stopped()
+        print("SystemHouseRenderer interrupted; status marked stopped.", file=sys.stderr)
+        return 130
+    except Exception as exc:
+        status_writer.write_failed(str(exc))
+        raise
+    status_writer.write_stopped()
     return 0

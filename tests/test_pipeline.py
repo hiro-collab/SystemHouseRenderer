@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from contextlib import redirect_stdout
+import io
 import json
 from pathlib import Path
 import unittest
 
 from system_house_renderer.event_sources import parse_sse_events, sword_events_to_topology
+from system_house_renderer.cli import main as cli_main
 from system_house_renderer.pipeline import render_file, render_payload, write_render_output
 
 
@@ -354,6 +357,36 @@ class PipelineTests(unittest.TestCase):
             "Sample Dify Workflow",
             (directory / "index.html").read_text(encoding="utf-8"),
         )
+
+    def test_cli_runtime_status_file_is_written(self) -> None:
+        directory = ROOT / "out" / "test-runtime-status"
+        status_path = directory / "system-house-status.json"
+        with redirect_stdout(io.StringIO()):
+            result = cli_main(
+                [
+                    "map",
+                    "--input",
+                    str(ROOT / "examples" / "dify_workflow.json"),
+                    "--out",
+                    str(directory / "map"),
+                    "--runtime-status-file",
+                    str(status_path),
+                ]
+            )
+        self.assertEqual(result, 0)
+        payload = json.loads(status_path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["module"], "system_house_renderer.map")
+        self.assertEqual(payload["state"], "stopped")
+        self.assertIsInstance(payload["pid"], int)
+        self.assertIn("parent_pid", payload)
+        self.assertIn("started_at", payload)
+        self.assertIn("uptime_s", payload)
+        self.assertIsNone(payload["host"])
+        self.assertIsNone(payload["port"])
+        self.assertIsNone(payload["health_url"])
+        self.assertIsNone(payload["shutdown_url"])
+        self.assertIsNone(payload["shutdown_command"])
+        self.assertIn("--runtime-status-file", payload["command_line"])
 
 
 if __name__ == "__main__":
