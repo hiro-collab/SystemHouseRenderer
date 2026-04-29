@@ -1,0 +1,6 @@
+{"event_id":"evt-1","type":"gesture.received","timestamp":1710000000.0,"source":"gesture_udp_receiver","turn_id":"turn-demo","payload":{"status":"active"}}
+{"event_id":"evt-2","type":"stt.final","timestamp":1710000001.0,"source":"ai_talk_core","turn_id":"turn-demo","payload":{"transcript":"買い物リストを作って"}}
+{"event_id":"evt-3","type":"handoff.saved","timestamp":1710000002.0,"source":"ai_talk_core","turn_id":"turn-demo","payload":{"text":"handoff saved"}}
+{"event_id":"evt-4","type":"dify.response","timestamp":1710000003.0,"source":"watch_handoff_to_dify","turn_id":"turn-demo","payload":{"elapsed_s":1.25,"response_text":"候補を作成しました"}}
+{"event_id":"evt-5","type":"tts.state","timestamp":1710000004.0,"source":"tts_service","turn_id":"turn-demo","payload":{"state":"speaking"}}
+{"event_id":"evt-6","type":"avatar.state","timestamp":1710000005.0,"source":"avatar_service","turn_id":"turn-demo","payload":{"state":"speaking"}}

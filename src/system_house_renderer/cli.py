@@ -14,13 +14,32 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command")
     map_parser = subparsers.add_parser("map", help="Generate map JSON and preview HTML.")
-    map_parser.add_argument("--input", required=True, help="Input JSON/YAML topology or Dify export.")
+    map_parser.add_argument(
+        "--input",
+        default="",
+        help="Input JSON/YAML topology or Dify export. Optional when --runtime uses a topology-producing adapter.",
+    )
     map_parser.add_argument("--out", required=True, help="Output directory.")
-    map_parser.add_argument("--runtime", default="", help="Optional runtime trace JSON/YAML.")
+    map_parser.add_argument(
+        "--runtime",
+        default="",
+        help="Optional runtime trace JSON/YAML/JSONL or SSE URL.",
+    )
+    map_parser.add_argument(
+        "--runtime-adapter",
+        choices=("auto", "generic", "sword-events"),
+        default="auto",
+        help="How to normalize --runtime. auto detects events.jsonl and /api/events.",
+    )
+    map_parser.add_argument(
+        "--turn-id",
+        default="",
+        help="Filter runtime events to a single turn_id when supported.",
+    )
     map_parser.add_argument("--requirements", default="", help="Optional requirements JSON/YAML.")
     map_parser.add_argument(
         "--mode",
-        choices=("overview", "tour", "debug", "cost", "security"),
+        choices=("overview", "tour", "trace", "debug", "cost", "security"),
         default="overview",
     )
     map_parser.add_argument("--metaphor", choices=("house",), default="house")
@@ -55,8 +74,10 @@ def run_map(args: argparse.Namespace) -> int:
         "language": args.language,
     }
     output = render_file(
-        args.input,
+        args.input or None,
         runtime_path=args.runtime or None,
+        runtime_adapter=args.runtime_adapter,
+        turn_id=args.turn_id or None,
         requirements_path=args.requirements or None,
         view_options=view_options,
     )

@@ -64,6 +64,14 @@ VALUE_REDACTION_RULES = [
             r"(?<![A-Za-z0-9_-])(?=[A-Za-z0-9_-]{32,})(?=[A-Za-z0-9_-]*[A-Z])(?=[A-Za-z0-9_-]*[a-z])(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9_-]{32,}(?![A-Za-z0-9_-])"
         ),
     ),
+    RedactionRule(
+        "windows_path",
+        re.compile(r"\b[A-Za-z]:\\(?:[^\\/:*?\"<>|\r\n]+\\)*[^\\/:*?\"<>|\r\n]*"),
+    ),
+    RedactionRule(
+        "home_or_absolute_path",
+        re.compile(r"(?<!\w)(?:~|/Users|/home|/var|/tmp|/opt|/etc)/[^\s\"'<>]+"),
+    ),
 ]
 
 

@@ -56,6 +56,29 @@ Dify 以外のシステムは、次のような汎用JSONで記述できます�
 }
 ```
 
+### Runtime Trace Adapter
+
+`--runtime` には、汎用runtime JSON/YAMLに加えて、JSONL形式のイベントログやSSE URLを指定できます。
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m system_house_renderer map `
+  --runtime examples\sword_events.jsonl `
+  --runtime-adapter sword-events `
+  --turn-id turn-demo `
+  --mode trace `
+  --detail-level deep `
+  --out out\sword-trace
+```
+
+`sword-events` adapter は、`sword-voice-agent` の `events.jsonl` や `/api/events?once=1` が返すSSEを、汎用runtime traceへ正規化します。入力topologyを指定しない場合は、次の標準経路を持つ簡易topologyを自動生成します。
+
+```text
+Gesture -> STT -> Handoff -> Dify -> TTS -> Avatar
+```
+
+本文は出力しません。`transcript`、`command`、`response_text`、`delta` などは `length` と短いhashだけに変換します。`--turn-id` を指定すると、その `turn_id` のイベントだけを可視化します。
+
 実行ログがある場合は、ツアー順序、active 表示、遅延、コスト、トークン数、エラー表示に使えます。
 
 ```json
@@ -129,6 +152,7 @@ runtime の主な反映:
 - 長いランダムAPIキー風文字列。
 - private key block。
 - `api_key=...`、`token: ...` などの代入風文字列。
+- Windows / Unix のローカル絶対パス。
 
 値そのものは隠し、存在だけを `diagnostics.hiddenItems` と `locked_box` ランドマークで示します。
 
@@ -138,6 +162,7 @@ runtime の主な反映:
 
 - `overview`: 全体構造を標準表示します。
 - `tour`: 実行順や active な部屋を案内向けに強調します。
+- `trace`: runtime trace の active 経路と `turn_id` 情報を強調します。
 - `debug`: `diagnostics` の `relatedId` が付いた部屋を強調します。
 - `cost`: cost がある部屋を見つけやすくし、cost marker を表示します。
 - `security`: secret、外部API、unknown、高リスクノードを強調し、security marker を表示します。
@@ -163,8 +188,10 @@ python -m system_house_renderer map `
 追加オプション:
 
 - `--runtime`: 実行ログJSON/YAMLを別ファイルで指定。
+- `--runtime-adapter`: `auto` / `generic` / `sword-events`。
+- `--turn-id`: runtime trace を特定の `turn_id` に絞り込み。
 - `--requirements`: 要求仕様JSON/YAMLを別ファイルで指定。
-- `--mode`: `overview` / `tour` / `debug` / `cost` / `security`。
+- `--mode`: `overview` / `tour` / `trace` / `debug` / `cost` / `security`。
 - `--detail-level`: `simple` / `normal` / `deep`。
 - `--language`: `ja` / `en`。
 

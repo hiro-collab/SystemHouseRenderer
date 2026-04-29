@@ -6,7 +6,7 @@ from system_house_renderer.diagnostics import add_warning
 from system_house_renderer.house import status_from_signals
 
 
-VALID_MODES = {"overview", "tour", "debug", "cost", "security"}
+VALID_MODES = {"overview", "tour", "trace", "debug", "cost", "security"}
 VALID_DETAIL_LEVELS = {"simple", "normal", "deep"}
 
 
@@ -51,6 +51,8 @@ def apply_view_policy(
         apply_debug_mode(spatial_map, diagnostics)
     elif mode == "tour":
         apply_tour_mode(spatial_map)
+    elif mode == "trace":
+        apply_trace_mode(spatial_map, runtime_metrics)
 
     apply_detail_level(semantic_graph, spatial_map, runtime_metrics, detail_level)
 
@@ -138,6 +140,24 @@ def apply_tour_mode(spatial_map: dict[str, Any]) -> None:
             continue
         signals = set(room.get("signals") or [])
         signals.add("tour_focus")
+        room["signals"] = sorted(signals)
+
+
+def apply_trace_mode(
+    spatial_map: dict[str, Any],
+    runtime_metrics: dict[str, Any],
+) -> None:
+    spatial_map["view"]["appliedPolicies"].append("trace")
+    spatial_map["trace"] = {
+        "turnIds": list(runtime_metrics.get("turnIds") or []),
+        "selectedTurnId": runtime_metrics.get("selectedTurnId") or "",
+        "sourceAdapter": runtime_metrics.get("sourceAdapter") or "",
+    }
+    for room in spatial_map.get("rooms", []):
+        if room.get("status") not in {"active", "warning", "error"}:
+            continue
+        signals = set(room.get("signals") or [])
+        signals.add("trace_focus")
         room["signals"] = sorted(signals)
 
 

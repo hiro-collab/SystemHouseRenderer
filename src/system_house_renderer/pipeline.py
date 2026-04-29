@@ -5,6 +5,7 @@ from typing import Any
 
 from system_house_renderer.adapters import normalize_payload_to_topology
 from system_house_renderer.diagnostics import new_diagnostics
+from system_house_renderer.event_sources import load_runtime_source
 from system_house_renderer.house import build_spatial_map
 from system_house_renderer.loader import load_document, write_json
 from system_house_renderer.preview import build_preview_html
@@ -16,23 +17,33 @@ from system_house_renderer.view_policy import apply_view_policy, normalize_view_
 
 
 def render_file(
-    input_path: str | Path,
+    input_path: str | Path | None,
     *,
     runtime_path: str | Path | None = None,
+    runtime_adapter: str = "auto",
+    turn_id: str | None = None,
     requirements_path: str | Path | None = None,
     view_options: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    payload = load_document(input_path)
+    payload = load_document(input_path) if input_path is not None else None
     if runtime_path is not None:
-        runtime = load_document(runtime_path)
-        if isinstance(payload, dict):
+        runtime_payload = load_runtime_source(
+            runtime_path,
+            adapter=runtime_adapter,
+            turn_id=turn_id,
+        )
+        if payload is None:
+            payload = runtime_payload
+        elif isinstance(payload, dict):
             payload = dict(payload)
-            payload["runtime"] = runtime
+            payload["runtime"] = runtime_payload.get("runtime", {})
     if requirements_path is not None:
         requirements = load_document(requirements_path)
         if isinstance(payload, dict):
             payload = dict(payload)
             payload["requirements"] = requirements
+    if payload is None:
+        raise ValueError("set --input or provide --runtime with a topology-producing adapter")
     return render_payload(payload, source_path=input_path, view_options=view_options)
 
 

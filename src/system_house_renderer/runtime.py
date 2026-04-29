@@ -30,10 +30,14 @@ def normalize_runtime_metrics(
     seen_active_nodes: set[str] = set()
 
     events = runtime_events(payload)
+    turn_ids: set[str] = set()
     previous_node_id: str | None = None
     for event in events:
         if not isinstance(event, dict):
             continue
+        turn_id = optional_text(event.get("turnId") or event.get("turn_id"))
+        if turn_id:
+            turn_ids.add(turn_id)
         node_id = event_node_id(event)
         if node_id in node_metrics:
             merge_node_event(node_metrics[node_id], event)
@@ -83,6 +87,11 @@ def normalize_runtime_metrics(
         "nodeMetrics": node_metrics,
         "edgeMetrics": edge_metrics,
         "thresholds": thresholds,
+        "turnIds": sorted(turn_ids),
+        "selectedTurnId": optional_text(
+            payload.get("selectedTurnId") or payload.get("selected_turn_id")
+        ),
+        "sourceAdapter": optional_text(payload.get("sourceAdapter") or payload.get("source_adapter")),
     }
 
 
@@ -130,6 +139,7 @@ def empty_node_metrics() -> dict[str, Any]:
         "tokens": 0,
         "errorCount": 0,
         "signals": [],
+        "text": {},
     }
 
 
@@ -142,6 +152,7 @@ def empty_edge_metrics() -> dict[str, Any]:
         "tokens": 0,
         "errorCount": 0,
         "signals": [],
+        "text": {},
     }
 
 
@@ -194,6 +205,30 @@ def merge_common_metrics(metrics: dict[str, Any], event: dict[str, Any]) -> None
 
     if event_has_error(event):
         metrics["errorCount"] += 1
+    merge_text_fingerprints(metrics, event)
+
+
+def merge_text_fingerprints(metrics: dict[str, Any], event: dict[str, Any]) -> None:
+    text_metrics = metrics.setdefault("text", {})
+    if not isinstance(text_metrics, dict):
+        text_metrics = {}
+        metrics["text"] = text_metrics
+    for key, value in event.items():
+        if not key.endswith("Length"):
+            continue
+        name = key[: -len("Length")]
+        if not name:
+            continue
+        entry = text_metrics.setdefault(name, {})
+        if not isinstance(entry, dict):
+            entry = {}
+            text_metrics[name] = entry
+        parsed_length = metric_int(event, key)
+        if parsed_length is not None:
+            entry["length"] = parsed_length
+        hash_value = event.get(f"{name}Hash")
+        if isinstance(hash_value, str) and hash_value:
+            entry["hash"] = hash_value
 
 
 def annotate_node_metrics(
