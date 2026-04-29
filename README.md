@@ -20,6 +20,7 @@ python -m system_house_renderer map --input examples\dify_workflow.json --out ou
 - `scene.json`: SVG/Canvasなどの描画に使う抽象描画データ。
 - `tour.json`: 構成を順に案内するツアーデータ。
 - `diagnostics.json`: 警告、未対応要素、隠した機密情報の一覧。
+- `runtime-metrics.json`: 実行ログや統計をノード/フロー単位に正規化したメトリクス。
 - `index.html`: ブラウザで確認できる簡易プレビュー。
 
 プレビューは `out\house-map\index.html` をブラウザで開いて確認します。
@@ -55,19 +56,32 @@ Dify 以外のシステムは、次のような汎用JSONで記述できます�
 }
 ```
 
-実行ログがある場合は、ツアー順序や active 表示に使えます。
+実行ログがある場合は、ツアー順序、active 表示、遅延、コスト、トークン数、エラー表示に使えます。
 
 ```json
 {
   "runtime": {
     "events": [
       { "nodeId": "input" },
-      { "nodeId": "worker" },
-      { "nodeId": "answer" }
-    ]
+      { "nodeId": "worker", "latencyMs": 2800, "cost": 0.07, "tokens": 9000 },
+      { "nodeId": "answer", "error": true }
+    ],
+    "thresholds": {
+      "latencyWarningMs": 2000,
+      "costWarning": 0.05,
+      "tokenWarning": 8000
+    }
   }
 }
 ```
+
+runtime の主な反映:
+
+- `error` または `status: "error"` があるノード/経路は `status: error`。
+- `latencyMs` がしきい値以上の部屋は `high_latency` signal。
+- `cost` がしきい値以上の部屋は `high_cost` signal と `cost_marker`。
+- `tokens` がしきい値以上のノードは `high_tokens` signal。
+- 同じ経路を複数回通った場合、廊下の `width` が太くなります。
 
 要求仕様を渡すと、欠落や乖離を `diagnostics.json` に出します。
 
@@ -107,7 +121,32 @@ Dify 以外のシステムは、次のような汎用JSONで記述できます�
 - `authorization`
 - `private_key`
 
+また、キー名だけでなく値そのものも検査します。`label`、`summary`、`description`、prompt などに次のような文字列が混ざった場合も `[redacted]` に置き換えます。
+
+- `sk-` で始まるOpenAI風キー。
+- `Bearer ...` や `Authorization: Bearer ...`。
+- JWT風文字列。
+- 長いランダムAPIキー風文字列。
+- private key block。
+- `api_key=...`、`token: ...` などの代入風文字列。
+
 値そのものは隠し、存在だけを `diagnostics.hiddenItems` と `locked_box` ランドマークで示します。
+
+## 表示モード
+
+`--mode` は、同じ構造データをどの観点で強調するかを決めます。
+
+- `overview`: 全体構造を標準表示します。
+- `tour`: 実行順や active な部屋を案内向けに強調します。
+- `debug`: `diagnostics` の `relatedId` が付いた部屋を強調します。
+- `cost`: cost がある部屋を見つけやすくし、cost marker を表示します。
+- `security`: secret、外部API、unknown、高リスクノードを強調し、security marker を表示します。
+
+`--detail-level` は出力の細かさを変えます。
+
+- `simple`: 部屋ごとの概要を優先します。
+- `normal`: 標準的な部屋/廊下/ノード情報を出します。
+- `deep`: 部屋内に `nodeDetails` と個別メトリクスを含めます。
 
 このモジュールは構成確認と説明のための補助ツールです。脅威モデリング、依存関係スキャン、正式なセキュリティレビューの代替ではありません。
 
@@ -140,5 +179,5 @@ python -m unittest discover -s tests
 
 - プレビューはMVPの簡易HTML/SVGです。
 - Dify export の実スキーマ差分には今後さらに対応が必要です。
-- コスト、レイテンシ、エラー頻度の表現は、入力データがある場合の拡張余地として残しています。
+- コスト、レイテンシ、エラー頻度の表現は基本対応です。実サービスごとの詳細な課金体系や独自ログ形式は、入力アダプタ側での追加正規化が必要です。
 - 3D表示や動画生成は行いません。

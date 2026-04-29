@@ -44,6 +44,38 @@ class PipelineTests(unittest.TestCase):
         landmarks = output["spatialMap"]["landmarks"]
         self.assertTrue(any(item["type"] == "locked_box" for item in landmarks))
 
+    def test_secret_value_patterns_are_redacted_from_labels_and_summaries(self) -> None:
+        secret = "sk-proj-AbCdEfGhIjKlMnOpQrStUvWxYz1234567890"
+        jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.K7xU9QmV2p4rS8tW0yZaBcDeFgHiJkLmNoPqRsTuVw"
+        payload = {
+            "system": {"id": "value-secret-test", "name": "Value Secret Test"},
+            "components": [
+                {"id": "a", "label": f"Input {secret}", "kind": "input"},
+                {
+                    "id": "b",
+                    "label": "External API",
+                    "kind": "external",
+                    "summary": f"Authorization: Bearer {jwt}",
+                },
+                {"id": "c", "label": "Output", "kind": "output"},
+            ],
+            "flows": [{"from": "a", "to": "b"}, {"from": "b", "to": "c"}],
+        }
+        output = render_payload(payload)
+        text = json.dumps(output, ensure_ascii=False)
+        self.assertNotIn(secret, text)
+        self.assertNotIn(jwt, text)
+        self.assertIn("[redacted]", text)
+        self.assertTrue(output["diagnostics"]["hiddenItems"])
+        nodes = {node["id"]: node for node in output["semanticGraph"]["nodes"]}
+        self.assertTrue(nodes["a"]["secretPresent"])
+        self.assertTrue(nodes["b"]["secretPresent"])
+        directory = ROOT / "out" / "test-redact"
+        write_render_output(output, directory)
+        html = (directory / "index.html").read_text(encoding="utf-8")
+        self.assertNotIn(secret, html)
+        self.assertNotIn(jwt, html)
+
     def test_layout_is_deterministic(self) -> None:
         path = ROOT / "examples" / "generic_system.json"
         first = render_file(path)["spatialMap"]
@@ -103,6 +135,90 @@ class PipelineTests(unittest.TestCase):
         output = render_payload(payload)
         focus_order = [step["focusNodeId"] for step in output["tour"]["steps"]]
         self.assertEqual(focus_order, ["a", "b", "c"])
+
+    def test_runtime_stats_affect_status_scene_and_tour(self) -> None:
+        payload = {
+            "system": {"name": "Runtime Metrics"},
+            "components": [
+                {"id": "a", "label": "A", "kind": "input"},
+                {"id": "b", "label": "B", "kind": "llm"},
+                {"id": "c", "label": "C", "kind": "output"},
+            ],
+            "flows": [{"id": "ab", "from": "a", "to": "b"}, {"id": "bc", "from": "b", "to": "c"}],
+            "runtime": {
+                "events": [
+                    {"nodeId": "a"},
+                    {"nodeId": "b", "latencyMs": 3500, "cost": 0.12, "tokens": 9000},
+                    {"nodeId": "c", "error": True},
+                ]
+            },
+        }
+        output = render_payload(payload, view_options={"mode": "cost", "detailLevel": "deep"})
+        node_metrics = output["runtimeMetrics"]["nodeMetrics"]
+        self.assertIn("high_latency", node_metrics["b"]["signals"])
+        self.assertIn("high_cost", node_metrics["b"]["signals"])
+        self.assertEqual(node_metrics["c"]["errorCount"], 1)
+        rooms = {room["role"]: room for room in output["spatialMap"]["rooms"]}
+        self.assertEqual(rooms["thinking_room"]["status"], "warning")
+        self.assertEqual(rooms["exit"]["status"], "error")
+        self.assertTrue(
+            any(item["type"] == "cost_marker" for item in output["spatialMap"]["landmarks"])
+        )
+        scene_rooms = [
+            item
+            for layer in output["renderScene"]["layers"]
+            if layer["id"] == "rooms"
+            for item in layer["items"]
+        ]
+        self.assertTrue(any(item["metrics"].get("cost") for item in scene_rooms))
+        self.assertTrue(any("3500ms" in step["narration"] for step in output["tour"]["steps"]))
+
+    def test_security_mode_highlights_risky_nodes(self) -> None:
+        payload = {
+            "system": {"name": "Security Mode"},
+            "components": [
+                {"id": "a", "label": "A", "kind": "input"},
+                {"id": "b", "label": "External API", "kind": "external"},
+                {"id": "c", "label": "Mystery", "kind": "unknown"},
+                {"id": "d", "label": "D", "kind": "output"},
+            ],
+            "flows": [
+                {"from": "a", "to": "b"},
+                {"from": "b", "to": "c"},
+                {"from": "c", "to": "d"},
+            ],
+        }
+        output = render_payload(payload, view_options={"mode": "security"})
+        self.assertEqual(output["viewOptions"]["mode"], "security")
+        self.assertIn("security", output["spatialMap"]["view"]["appliedPolicies"])
+        risky_rooms = [
+            room
+            for room in output["spatialMap"]["rooms"]
+            if "security_focus" in room.get("signals", [])
+        ]
+        self.assertGreaterEqual(len(risky_rooms), 2)
+        self.assertTrue(
+            any(item["type"] == "security_marker" for item in output["spatialMap"]["landmarks"])
+        )
+
+    def test_detail_level_changes_spatial_output(self) -> None:
+        payload = {
+            "system": {"name": "Detail Levels"},
+            "components": [
+                {"id": "a", "label": "A", "kind": "input"},
+                {"id": "b", "label": "B", "kind": "tool"},
+                {"id": "c", "label": "C", "kind": "output"},
+            ],
+            "flows": [{"from": "a", "to": "b"}, {"from": "b", "to": "c"}],
+        }
+        simple = render_payload(payload, view_options={"detailLevel": "simple"})
+        deep = render_payload(payload, view_options={"detailLevel": "deep"})
+        simple_room = simple["spatialMap"]["rooms"][0]
+        deep_room = deep["spatialMap"]["rooms"][0]
+        self.assertIn("summary", simple_room)
+        self.assertNotIn("nodeDetails", simple_room)
+        self.assertIn("nodeDetails", deep_room)
+        self.assertNotEqual(simple["spatialMap"], deep["spatialMap"])
 
     def test_requirement_drift_is_reported(self) -> None:
         payload = {

@@ -7,15 +7,17 @@ from typing import Any
 def build_tour(
     semantic_graph: dict[str, Any],
     spatial_map: dict[str, Any],
-    runtime: dict[str, Any] | None,
+    runtime_metrics: dict[str, Any] | None,
     *,
     language: str = "ja",
 ) -> dict[str, Any]:
+    metrics = runtime_metrics if isinstance(runtime_metrics, dict) else {}
     node_lookup = {node["id"]: node for node in semantic_graph.get("nodes", [])}
     node_room_map = spatial_map.get("nodeRoomMap", {})
-    order = runtime_node_order(runtime or {}, node_lookup)
+    order = [node_id for node_id in metrics.get("activeNodeIds", []) if node_id in node_lookup]
     if not order:
         order = topological_or_stable_order(semantic_graph)
+    node_metrics = metrics.get("nodeMetrics") if isinstance(metrics.get("nodeMetrics"), dict) else {}
 
     system_name = semantic_graph.get("system", {}).get("name") or "System"
     steps = []
@@ -31,7 +33,11 @@ def build_tour(
                 "focusRoomId": room_id,
                 "focusNodeId": node_id,
                 "camera": camera,
-                "narration": narration_for_node(node, language),
+                "narration": narration_for_node(
+                    node,
+                    language,
+                    metrics=node_metrics.get(node_id, {}),
+                ),
                 "highlightIds": [item for item in (room_id, node_id) if item],
             }
         )
@@ -90,9 +96,15 @@ def topological_or_stable_order(semantic_graph: dict[str, Any]) -> list[str]:
     return order + remaining
 
 
-def narration_for_node(node: dict[str, Any], language: str) -> str:
+def narration_for_node(
+    node: dict[str, Any],
+    language: str,
+    *,
+    metrics: dict[str, Any] | None = None,
+) -> str:
     label = node.get("label") or node.get("id")
     kind = node.get("kind") or "unknown"
+    metrics_text = runtime_metrics_text(metrics or {}, language)
     if language == "en":
         role = {
             "input": "receives input",
@@ -105,7 +117,7 @@ def narration_for_node(node: dict[str, Any], language: str) -> str:
             "variable": "prepares variables",
             "output": "returns the result",
         }.get(kind, "needs manual review")
-        return f"{label} {role}."
+        return f"{label} {role}.{metrics_text}"
     role = {
         "input": "入力を受け取ります",
         "llm": "モデルによる推論を行います",
@@ -117,7 +129,25 @@ def narration_for_node(node: dict[str, Any], language: str) -> str:
         "variable": "変数や中間値を整えます",
         "output": "結果を返します",
     }.get(kind, "手動確認が必要な要素です")
-    return f"「{label}」で{role}。"
+    return f"「{label}」で{role}。{metrics_text}"
+
+
+def runtime_metrics_text(metrics: dict[str, Any], language: str) -> str:
+    if not metrics:
+        return ""
+    parts: list[str] = []
+    if metrics.get("errorCount", 0):
+        parts.append(f"errors={metrics['errorCount']}" if language == "en" else f"エラー{metrics['errorCount']}件")
+    if metrics.get("latencyMs") is not None:
+        parts.append(f"{float(metrics['latencyMs']):.0f}ms")
+    if metrics.get("cost", 0):
+        parts.append(f"cost={float(metrics['cost']):.4f}")
+    if metrics.get("tokens", 0):
+        parts.append(f"tokens={int(metrics['tokens'])}")
+    if not parts:
+        return ""
+    joined = ", ".join(parts)
+    return f" Runtime: {joined}." if language == "en" else f" 実行情報: {joined}。"
 
 
 def camera_for_room(spatial_map: dict[str, Any], room_id: str | None) -> dict[str, float]:

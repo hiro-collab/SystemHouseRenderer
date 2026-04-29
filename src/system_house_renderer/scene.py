@@ -35,6 +35,8 @@ def build_render_scene(
                 "y2": y2,
                 "width": corridor.get("width", 2),
                 "status": corridor.get("status", "normal"),
+                "signals": list(corridor.get("signals", [])),
+                "metrics": dict(corridor.get("metrics", {})),
             }
         )
 
@@ -52,6 +54,8 @@ def build_render_scene(
                 "height": size["height"],
                 "role": room["role"],
                 "status": room.get("status", "normal"),
+                "signals": list(room.get("signals", [])),
+                "metrics": dict(room.get("metrics", {})),
             }
         )
         layer_map["labels"]["items"].append(

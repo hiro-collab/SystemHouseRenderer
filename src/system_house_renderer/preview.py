@@ -30,6 +30,8 @@ LANDMARK_SYMBOLS = {
     "locked_box": "L",
     "model_console": "M",
     "api_port": "A",
+    "cost_marker": "$",
+    "security_marker": "S",
 }
 
 
@@ -76,7 +78,7 @@ def build_preview_html(output: dict[str, Any]) -> str:
         <span><span class="swatch" style="background:#2f9e44"></span>active</span>
         <span><span class="swatch" style="background:#b7791f"></span>warning</span>
         <span><span class="swatch" style="background:#c92a2a"></span>error</span>
-        <span class="code">D door / B bookshelf / M model / A API / L locked</span>
+        <span class="code">D door / B bookshelf / M model / A API / L locked / $ cost / S security</span>
       </div>
     </section>
     <aside class="side">

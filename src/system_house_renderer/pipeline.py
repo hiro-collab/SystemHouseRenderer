@@ -8,9 +8,11 @@ from system_house_renderer.diagnostics import new_diagnostics
 from system_house_renderer.house import build_spatial_map
 from system_house_renderer.loader import load_document, write_json
 from system_house_renderer.preview import build_preview_html
+from system_house_renderer.runtime import normalize_runtime_metrics
 from system_house_renderer.scene import build_render_scene
 from system_house_renderer.semantic import build_semantic_graph
 from system_house_renderer.tour import build_tour
+from system_house_renderer.view_policy import apply_view_policy, normalize_view_options
 
 
 def render_file(
@@ -40,28 +42,33 @@ def render_payload(
     source_path: str | Path | None = None,
     view_options: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    options = {
-        "mode": "overview",
-        "metaphor": "house",
-        "detailLevel": "normal",
-        "language": "ja",
-    }
-    if view_options:
-        options.update({key: value for key, value in view_options.items() if value is not None})
+    options = normalize_view_options(view_options)
     diagnostics = new_diagnostics()
     topology = normalize_payload_to_topology(payload, diagnostics, source_path=source_path)
     semantic_graph = build_semantic_graph(topology, diagnostics)
+    runtime_metrics = normalize_runtime_metrics(
+        topology.get("runtime") or {},
+        semantic_graph,
+        diagnostics,
+    )
     spatial_map = build_spatial_map(
         semantic_graph,
-        topology.get("runtime") or {},
+        runtime_metrics,
         diagnostics,
         language=str(options.get("language") or "ja"),
+    )
+    apply_view_policy(
+        semantic_graph,
+        spatial_map,
+        runtime_metrics,
+        diagnostics,
+        options,
     )
     render_scene = build_render_scene(semantic_graph, spatial_map)
     tour = build_tour(
         semantic_graph,
         spatial_map,
-        topology.get("runtime") or {},
+        runtime_metrics,
         language=str(options.get("language") or "ja"),
     )
     return {
@@ -70,6 +77,7 @@ def render_payload(
         "renderScene": render_scene,
         "tour": tour,
         "diagnostics": diagnostics,
+        "runtimeMetrics": runtime_metrics,
         "viewOptions": options,
     }
 
@@ -83,6 +91,7 @@ def write_render_output(output: dict[str, Any], out_dir: str | Path) -> dict[str
         "renderScene": resolved / "scene.json",
         "tour": resolved / "tour.json",
         "diagnostics": resolved / "diagnostics.json",
+        "runtimeMetrics": resolved / "runtime-metrics.json",
     }
     for key, path in files.items():
         write_json(path, output[key])
