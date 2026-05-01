@@ -23,3 +23,6 @@ system-house-renderer = "system_house_renderer.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.uv]
+cache-dir = ".uv-cache"
