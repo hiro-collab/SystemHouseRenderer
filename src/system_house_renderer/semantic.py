@@ -34,6 +34,9 @@ def build_semantic_graph(
                 "summary": str(component.get("summary") or ""),
                 "riskLevel": str(component.get("riskLevel") or "low"),
                 "secretPresent": bool(component.get("secretPresent", False)),
+                "authority": component.get("authority") or {},
+                "variables": component.get("variables") or [],
+                "state": component.get("state") or {},
             }
         )
 
@@ -71,6 +74,16 @@ def build_semantic_graph(
                 "from": source,
                 "to": target,
                 "kind": edge_kind,
+                "label": str(flow.get("label") or ""),
+                "transport": str(flow.get("transport") or ""),
+                "protocol": str(flow.get("protocol") or ""),
+                "channel": str(flow.get("channel") or ""),
+                "endpoint": str(flow.get("endpoint") or ""),
+                "payload": flow.get("payload") or {},
+                "auth": flow.get("auth") or {},
+                "authority": flow.get("authority") or {},
+                "stateChanges": flow.get("stateChanges") or [],
+                "secretPresent": bool(flow.get("secretPresent", False)),
             }
         )
 
@@ -88,6 +101,8 @@ def build_semantic_graph(
         "system": dict(topology.get("system") or {}),
         "nodes": nodes,
         "edges": edges,
+        "variables": topology.get("variables") or [],
+        "stateMachines": topology.get("stateMachines") or [],
     }
 
 

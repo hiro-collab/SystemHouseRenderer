@@ -8,8 +8,22 @@ def build_render_scene(
     spatial_map: dict[str, Any],
 ) -> dict[str, Any]:
     rooms_by_id = {room["id"]: room for room in spatial_map.get("rooms", [])}
+    canvas_width, canvas_height = canvas_size(spatial_map)
     layers = [
-        {"id": "floor", "type": "floor", "items": [{"id": "floor", "type": "rect", "x": 20, "y": 30, "width": 1540, "height": 560}]},
+        {
+            "id": "floor",
+            "type": "floor",
+            "items": [
+                {
+                    "id": "floor",
+                    "type": "rect",
+                    "x": 22,
+                    "y": 26,
+                    "width": canvas_width - 44,
+                    "height": canvas_height - 52,
+                }
+            ],
+        },
         {"id": "corridors", "type": "corridor", "items": []},
         {"id": "rooms", "type": "room", "items": []},
         {"id": "icons", "type": "icon", "items": []},
@@ -23,8 +37,7 @@ def build_render_scene(
         to_room = rooms_by_id.get(corridor["toRoomId"])
         if not from_room or not to_room:
             continue
-        x1, y1 = room_center(from_room)
-        x2, y2 = room_center(to_room)
+        x1, y1, x2, y2 = connection_points(from_room, to_room)
         layer_map["corridors"]["items"].append(
             {
                 "id": corridor["id"],
@@ -56,6 +69,8 @@ def build_render_scene(
                 "status": room.get("status", "normal"),
                 "signals": list(room.get("signals", [])),
                 "metrics": dict(room.get("metrics", {})),
+                "roomNumber": room.get("roomNumber", ""),
+                "zoneName": room.get("zoneName", ""),
             }
         )
         layer_map["labels"]["items"].append(
@@ -115,7 +130,60 @@ def build_render_scene(
                 "tooltip": room["name"],
             }
         )
-    return {"format": "svg-scene", "layers": layers, "interactions": interactions}
+    return {
+        "format": "svg-scene",
+        "canvas": {"width": canvas_width, "height": canvas_height},
+        "layers": layers,
+        "interactions": interactions,
+    }
+
+
+def canvas_size(spatial_map: dict[str, Any]) -> tuple[int, int]:
+    rooms = spatial_map.get("rooms", [])
+    if not rooms:
+        return (1580, 620)
+    max_x = max(
+        int(room["position"]["x"]) + int(room["size"]["width"])
+        for room in rooms
+    )
+    max_y = max(
+        int(room["position"]["y"]) + int(room["size"]["height"])
+        for room in rooms
+    )
+    return (max(1160, max_x + 80), max(620, max_y + 80))
+
+
+def connection_points(
+    from_room: dict[str, Any],
+    to_room: dict[str, Any],
+) -> tuple[float, float, float, float]:
+    from_center = room_center(from_room)
+    to_center = room_center(to_room)
+    x1, y1 = boundary_point(from_room, to_center)
+    x2, y2 = boundary_point(to_room, from_center)
+    return (x1, y1, x2, y2)
+
+
+def boundary_point(room: dict[str, Any], target: tuple[float, float]) -> tuple[float, float]:
+    cx, cy = room_center(room)
+    tx, ty = target
+    dx = tx - cx
+    dy = ty - cy
+    position = room["position"]
+    size = room["size"]
+    half_width = float(size["width"]) / 2
+    half_height = float(size["height"]) / 2
+    if dx == 0 and dy == 0:
+        return (cx, cy)
+    scale_x = half_width / abs(dx) if dx else float("inf")
+    scale_y = half_height / abs(dy) if dy else float("inf")
+    scale = min(scale_x, scale_y)
+    x = cx + dx * scale
+    y = cy + dy * scale
+    return (
+        max(float(position["x"]), min(float(position["x"]) + float(size["width"]), x)),
+        max(float(position["y"]), min(float(position["y"]) + float(size["height"]), y)),
+    )
 
 
 def room_center(room: dict[str, Any]) -> tuple[float, float]:

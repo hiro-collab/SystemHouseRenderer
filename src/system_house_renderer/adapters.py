@@ -5,7 +5,11 @@ from pathlib import Path
 from typing import Any
 
 from system_house_renderer.diagnostics import add_warning
-from system_house_renderer.sanitizer import register_secret_findings, sanitize_summary
+from system_house_renderer.sanitizer import (
+    is_secret_key,
+    register_secret_findings,
+    sanitize_summary,
+)
 
 
 SEMANTIC_KINDS = {
@@ -87,6 +91,9 @@ def normalize_generic_topology(
                 ),
                 "riskLevel": infer_risk_level(kind, secret_present),
                 "secretPresent": secret_present,
+                "authority": sanitize_metadata(item.get("authority") or {}),
+                "variables": sanitize_metadata(item.get("variables") or []),
+                "state": sanitize_metadata(item.get("state") or {}),
             }
         )
 
@@ -102,6 +109,11 @@ def normalize_generic_topology(
         source = str(item.get("from") or item.get("source") or "").strip()
         target = str(item.get("to") or item.get("target") or "").strip()
         flow_id = str(item.get("id") or f"flow_{index + 1}").strip()
+        secret_present = register_secret_findings(
+            diagnostics,
+            item,
+            owner_id=flow_id,
+        )
         flows.append(
             {
                 "id": flow_id,
@@ -109,6 +121,15 @@ def normalize_generic_topology(
                 "to": target,
                 "kind": normalize_edge_kind(item.get("kind") or item.get("type")),
                 "label": sanitize_summary(item.get("label") or item.get("name") or ""),
+                "transport": sanitize_summary(item.get("transport") or ""),
+                "protocol": sanitize_summary(item.get("protocol") or ""),
+                "channel": sanitize_summary(item.get("channel") or ""),
+                "endpoint": sanitize_summary(item.get("endpoint") or "", max_chars=240),
+                "payload": sanitize_metadata(item.get("payload") or {}),
+                "auth": sanitize_metadata(item.get("auth") or {}),
+                "authority": sanitize_metadata(item.get("authority") or {}),
+                "stateChanges": sanitize_metadata(item.get("stateChanges") or []),
+                "secretPresent": secret_present,
             }
         )
 
@@ -117,6 +138,8 @@ def normalize_generic_topology(
         "components": components,
         "flows": flows,
         "resources": _list(payload.get("resources")),
+        "variables": sanitize_metadata(payload.get("variables") or []),
+        "stateMachines": sanitize_metadata(payload.get("stateMachines") or []),
         "runtime": payload.get("runtime") if isinstance(payload.get("runtime"), Mapping) else {},
         "requirements": (
             payload.get("requirements")
@@ -165,6 +188,7 @@ def normalize_dify_export(
             node,
             owner_id=node_id,
         )
+        metadata = dify_component_metadata(node_data)
         components.append(
             {
                 "id": node_id,
@@ -173,6 +197,9 @@ def normalize_dify_export(
                 "summary": dify_node_summary(node, node_data),
                 "riskLevel": infer_risk_level(kind, secret_present),
                 "secretPresent": secret_present,
+                "authority": metadata.get("authority", {}),
+                "variables": metadata.get("variables", []),
+                "state": metadata.get("state", {}),
             }
         )
 
@@ -188,6 +215,7 @@ def normalize_dify_export(
         source = str(edge.get("source") or edge.get("from") or "").strip()
         target = str(edge.get("target") or edge.get("to") or "").strip()
         edge_id = str(edge.get("id") or f"edge_{index + 1}").strip()
+        edge_data = edge.get("data") if isinstance(edge.get("data"), Mapping) else {}
         edge_kind = normalize_edge_kind(
             edge.get("kind")
             or edge.get("type")
@@ -200,7 +228,26 @@ def normalize_dify_export(
                 "from": source,
                 "to": target,
                 "kind": edge_kind,
-                "label": sanitize_summary(edge.get("label") or ""),
+                "label": sanitize_summary(
+                    edge.get("label")
+                    or edge.get("sourceHandle")
+                    or edge.get("source_handle")
+                    or ""
+                ),
+                "transport": "",
+                "protocol": "",
+                "channel": sanitize_summary(edge.get("sourceHandle") or ""),
+                "endpoint": "",
+                "payload": sanitize_metadata(
+                    {
+                        "sourceType": edge_data.get("sourceType"),
+                        "targetType": edge_data.get("targetType"),
+                    }
+                ),
+                "auth": {},
+                "authority": {},
+                "stateChanges": [],
+                "secretPresent": False,
             }
         )
 
@@ -220,6 +267,8 @@ def normalize_dify_export(
         "components": components,
         "flows": flows,
         "resources": [],
+        "variables": [],
+        "stateMachines": [],
         "runtime": runtime,
         "requirements": requirements,
     }
@@ -340,12 +389,60 @@ def dify_node_summary(node: Mapping[str, Any], node_data: Mapping[str, Any]) -> 
     return ""
 
 
+def dify_component_metadata(node_data: Mapping[str, Any]) -> dict[str, Any]:
+    node_type = str(node_data.get("type") or "").strip().lower()
+    metadata: dict[str, Any] = {}
+    if node_type == "http-request":
+        authorization = (
+            node_data.get("authorization")
+            if isinstance(node_data.get("authorization"), Mapping)
+            else {}
+        )
+        metadata["authority"] = {
+            "owner": "Dify workflow node",
+            "method": node_data.get("method"),
+            "endpoint": node_data.get("url"),
+            "auth": authorization.get("type") or "headers",
+        }
+    if node_data.get("outputs") is not None:
+        metadata["variables"] = {
+            "writes": node_data.get("outputs"),
+        }
+    if node_data.get("variables") is not None:
+        metadata.setdefault("variables", {})
+        if isinstance(metadata["variables"], Mapping):
+            metadata["variables"] = dict(metadata["variables"])
+            metadata["variables"]["reads"] = node_data.get("variables")
+    return sanitize_metadata(metadata)
+
+
 def normalize_runtime(value: Any) -> dict[str, Any]:
     if isinstance(value, Mapping):
         return dict(value)
     if isinstance(value, list):
         return {"events": value}
     return {}
+
+
+def sanitize_metadata(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        sanitized: dict[str, Any] = {}
+        for key, nested in value.items():
+            key_text = sanitize_summary(key, max_chars=80)
+            if not key_text:
+                continue
+            if is_secret_key(key):
+                sanitized[key_text] = "[redacted]"
+            else:
+                sanitized[key_text] = sanitize_metadata(nested)
+        return sanitized
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return [sanitize_metadata(item) for item in value]
+    if isinstance(value, str):
+        return sanitize_summary(value, max_chars=240)
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    return sanitize_summary(value, max_chars=240)
 
 
 def _system_payload(

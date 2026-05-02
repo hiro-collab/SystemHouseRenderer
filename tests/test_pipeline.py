@@ -86,6 +86,87 @@ class PipelineTests(unittest.TestCase):
         second = render_file(path)["spatialMap"]
         self.assertEqual(first, second)
 
+    def test_house_layout_uses_component_rooms(self) -> None:
+        payload = {
+            "system": {"name": "Component Rooms"},
+            "components": [
+                {"id": "a", "label": "A", "kind": "input"},
+                {"id": "b", "label": "B", "kind": "tool"},
+                {"id": "c", "label": "C", "kind": "output"},
+            ],
+            "flows": [{"from": "a", "to": "b"}, {"from": "b", "to": "c"}],
+        }
+        output = render_payload(payload)
+        self.assertEqual(output["spatialMap"]["layout"]["style"], "component_rooms")
+        self.assertEqual(
+            len(output["spatialMap"]["rooms"]),
+            len(output["semanticGraph"]["nodes"]),
+        )
+        self.assertTrue(
+            all(len(room["nodeIds"]) == 1 for room in output["spatialMap"]["rooms"])
+        )
+        self.assertIn("canvas", output["renderScene"])
+
+    def test_contract_authority_and_state_metadata_reach_preview(self) -> None:
+        payload = {
+            "system": {"name": "Metadata"},
+            "components": [
+                {"id": "a", "label": "A", "kind": "input"},
+                {"id": "b", "label": "B", "kind": "tool"},
+                {"id": "c", "label": "C", "kind": "output"},
+            ],
+            "variables": [
+                {
+                    "name": "turn_id",
+                    "authority": "a",
+                    "writes": ["a"],
+                    "reads": ["b", "c"],
+                    "storage": "events.jsonl",
+                }
+            ],
+            "stateMachines": [
+                {
+                    "name": "Turn",
+                    "transitions": [
+                        {
+                            "from": "idle",
+                            "to": "listening",
+                            "trigger": "gesture active",
+                            "authority": "a",
+                        }
+                    ],
+                }
+            ],
+            "flows": [
+                {
+                    "id": "ab",
+                    "from": "a",
+                    "to": "b",
+                    "kind": "data",
+                    "transport": "HTTP",
+                    "endpoint": "http://127.0.0.1:8000/api",
+                    "payload": ["turn_id"],
+                    "auth": {"token": "secret-token-value"},
+                    "stateChanges": ["idle -> listening"],
+                },
+                {"id": "bc", "from": "b", "to": "c", "kind": "data"},
+            ],
+        }
+        output = render_payload(payload)
+        edge = {item["id"]: item for item in output["semanticGraph"]["edges"]}["ab"]
+        self.assertEqual(edge["transport"], "HTTP")
+        self.assertEqual(output["semanticGraph"]["variables"][0]["name"], "turn_id")
+        text = json.dumps(output, ensure_ascii=False)
+        self.assertNotIn("secret-token-value", text)
+        directory = ROOT / "out" / "test-metadata"
+        write_render_output(output, directory)
+        html = (directory / "index.html").read_text(encoding="utf-8")
+        self.assertIn("Communication Paths", html)
+        self.assertIn("Authority / Variables", html)
+        self.assertIn("State Transitions", html)
+        self.assertIn("idle -&gt; listening", html)
+        self.assertNotIn("secret-token-value", html)
+
     def test_unknown_node_type_does_not_crash(self) -> None:
         payload = {
             "app": {"name": "Unknown Node"},

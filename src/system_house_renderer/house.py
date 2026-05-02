@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import defaultdict, deque
 from typing import Any
 
 
@@ -25,6 +25,13 @@ ROLE_POSITIONS = {
     "exit": (1260, 220),
     "utility": (360, 340),
 }
+
+ROOM_START_X = 70
+ROOM_START_Y = 70
+ROOM_COLUMN_STEP = 300
+ROOM_ROW_STEP = 176
+ROOM_WIDTH = 232
+ROOM_HEIGHT = 126
 
 ROLE_NAMES_JA = {
     "entrance": "玄関",
@@ -61,43 +68,55 @@ def build_spatial_map(
     active_edges = set(metrics.get("activeEdgeIds") or [])
     node_metrics = metrics.get("nodeMetrics") if isinstance(metrics.get("nodeMetrics"), dict) else {}
     edge_metrics = metrics.get("edgeMetrics") if isinstance(metrics.get("edgeMetrics"), dict) else {}
-    nodes_by_role: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for node in semantic_graph.get("nodes", []):
-        role = role_for_kind(str(node.get("kind") or "unknown"))
-        nodes_by_role[role].append(node)
+    nodes = list(semantic_graph.get("nodes", []))
+    edges = list(semantic_graph.get("edges", []))
+    ranks = graph_ranks(nodes, edges)
+    nodes_by_rank: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for node in nodes:
+        nodes_by_rank[int(ranks.get(node["id"], 0))].append(node)
 
     rooms: list[dict[str, Any]] = []
     node_room_map: dict[str, str] = {}
-    for role in ROLE_ORDER:
-        role_nodes = sorted(nodes_by_role.get(role, []), key=lambda item: item["id"])
-        if not role_nodes:
-            continue
-        x, y = ROLE_POSITIONS[role]
-        node_count = len(role_nodes)
-        room_id = f"room_{role}"
-        room_metrics = aggregate_node_metrics(role_nodes, node_metrics)
-        signals = room_signals(role_nodes, room_metrics, active_nodes)
-        rooms.append(
-            {
-                "id": room_id,
-                "name": role_name(role, language),
-                "role": role,
-                "nodeIds": [node["id"] for node in role_nodes],
-                "position": {"x": x, "y": y},
-                "size": {
-                    "width": max(220, min(360, 180 + node_count * 42)),
-                    "height": max(150, min(300, 110 + node_count * 32)),
-                },
-                "status": status_from_signals(signals),
-                "signals": signals,
-                "metrics": room_metrics,
-            }
+    room_index = 0
+    for rank in sorted(nodes_by_rank):
+        rank_nodes = sorted(
+            nodes_by_rank[rank],
+            key=lambda item: (
+                ROLE_ORDER.index(role_for_kind(str(item.get("kind") or "unknown"))),
+                item["id"],
+            ),
         )
-        for node in role_nodes:
+        for row_index, node in enumerate(rank_nodes):
+            role = role_for_kind(str(node.get("kind") or "unknown"))
+            room_id = f"room_{node['id']}"
+            room_metrics = aggregate_node_metrics([node], node_metrics)
+            signals = room_signals([node], room_metrics, active_nodes)
+            room_index += 1
+            rooms.append(
+                {
+                    "id": room_id,
+                    "name": str(node.get("label") or node["id"]),
+                    "roomNumber": f"R{room_index:02d}",
+                    "zoneName": role_name(role, language),
+                    "role": role,
+                    "nodeIds": [node["id"]],
+                    "position": {
+                        "x": ROOM_START_X + rank * ROOM_COLUMN_STEP,
+                        "y": ROOM_START_Y + row_index * ROOM_ROW_STEP,
+                    },
+                    "size": {
+                        "width": ROOM_WIDTH,
+                        "height": ROOM_HEIGHT,
+                    },
+                    "status": status_from_signals(signals),
+                    "signals": signals,
+                    "metrics": room_metrics,
+                }
+            )
             node_room_map[node["id"]] = room_id
 
     corridor_groups: dict[tuple[str, str], list[str]] = defaultdict(list)
-    for edge in semantic_graph.get("edges", []):
+    for edge in edges:
         from_room = node_room_map.get(edge["from"])
         to_room = node_room_map.get(edge["to"])
         if not from_room or not to_room or from_room == to_room:
@@ -112,7 +131,7 @@ def build_spatial_map(
             edge_ids,
             edge_metrics,
             active_edges,
-            semantic_graph.get("edges", []),
+            edges,
         )
         status = status_from_signals(signals)
         visit_bonus = min(8, corridor_metrics.get("visitCount", 0))
@@ -167,7 +186,53 @@ def build_spatial_map(
         "corridors": corridors,
         "landmarks": landmarks,
         "nodeRoomMap": node_room_map,
+        "layout": {
+            "style": "component_rooms",
+            "roomCount": len(rooms),
+            "columnStep": ROOM_COLUMN_STEP,
+            "rowStep": ROOM_ROW_STEP,
+        },
     }
+
+
+def graph_ranks(nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> dict[str, int]:
+    node_ids = {str(node["id"]) for node in nodes}
+    outgoing: dict[str, list[str]] = defaultdict(list)
+    incoming_count: dict[str, int] = {node_id: 0 for node_id in node_ids}
+    for edge in edges:
+        source = str(edge.get("from") or "")
+        target = str(edge.get("to") or "")
+        if source not in node_ids or target not in node_ids:
+            continue
+        outgoing[source].append(target)
+        incoming_count[target] += 1
+
+    input_ids = sorted(
+        str(node["id"])
+        for node in nodes
+        if str(node.get("kind") or "") == "input"
+    )
+    start_ids = input_ids or sorted(
+        node_id for node_id, count in incoming_count.items() if count == 0
+    )
+    queue = deque(start_ids)
+    ranks: dict[str, int] = {node_id: 0 for node_id in start_ids}
+    remaining_incoming = dict(incoming_count)
+
+    while queue:
+        node_id = queue.popleft()
+        for target in sorted(outgoing.get(node_id, [])):
+            ranks[target] = max(ranks.get(target, 0), ranks.get(node_id, 0) + 1)
+            remaining_incoming[target] -= 1
+            if remaining_incoming[target] == 0:
+                queue.append(target)
+
+    fallback_rank = max(ranks.values(), default=0) + 1
+    for node_id in sorted(node_ids):
+        if node_id not in ranks:
+            ranks[node_id] = fallback_rank
+            fallback_rank += 1
+    return ranks
 
 
 def role_for_kind(kind: str) -> str:
