@@ -1,6 +1,6 @@
-# SystemHouseRenderer
+# System House Renderer
 
-SystemHouseRenderer は、Dify workflow や Web/ローカル連携システムの構成を、「家の中を案内するような空間マップ」として可視化するためのモジュールです。
+System House Renderer は、Dify workflow や Web/ローカル連携システムの構成を、「家の中を案内するような空間マップ」として可視化するためのモジュールです。
 
 単なるノードグラフではなく、構成要素を部屋・廊下・ランドマークへ変換します。構成の不具合、無駄な経路、セキュリティ上の注意点、要求仕様とのずれを見つけやすくすることを目的にしています。
 
