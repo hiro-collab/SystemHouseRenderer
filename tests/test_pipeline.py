@@ -310,7 +310,7 @@ class PipelineTests(unittest.TestCase):
         event_dir.mkdir(parents=True, exist_ok=True)
         event_path = event_dir / "events.jsonl"
         secret = "sk-proj-AbCdEfGhIjKlMnOpQrStUvWxYz1234567890"
-        local_path = r"C:\Users\kawai\secret\handoff.json"
+        local_path = r"<home>\secret\handoff.json"
         events = [
             {
                 "event_id": "1",
