@@ -42,6 +42,21 @@ Supported input types:
 
 Generic topology should describe nodes, edges, node types, labels, and optional metadata. Runtime trace can add active path, latency, error, cost, and token metrics.
 
+## Topology Snapshot Metrics
+
+When this organ is used as the basis for a topology/status provider, current
+metric records should be treated as snapshot state rather than renderer-only
+runtime metrics. The snapshot contract is `runtime/status-store/metric-records.v0.md`;
+current records belong under `metrics.current[]` in
+`.cache/agent-os/status/topology.json`.
+
+Snapshot metric records can describe both system-level estimates, such as a
+lighting conflict `reality_divergence`, and driver-local estimates, such as
+camera/vision `source_confidence`. The renderer should preserve the numeric
+value, subject, source, provenance, freshness, basis, and typed evidence
+references. It should not embed raw media, prompts, secrets, large logs, or
+private local paths, and it should not require recorded-label history.
+
 ## CLI
 
 Common options:
