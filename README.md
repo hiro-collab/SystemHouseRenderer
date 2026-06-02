@@ -12,11 +12,25 @@ System topology and runtime trace renderer. It turns Dify workflow exports or ge
 
 System House Renderer is a short-lived CLI. It does not run a server and does not control any module.
 
-## Quick Start
+## Initial Setup
 
 ```powershell
 cd <workspace>\system-house-renderer
 uv sync
+uv run python -m unittest discover -s tests
+```
+
+No `.env` file is required for the standard renderer path. Inputs and outputs
+are file paths passed on the command line.
+
+Generated previews under `out/`, runtime status files, redaction diagnostics,
+and local trace captures are local artifacts unless they are separately reviewed
+for publication.
+
+## Normal Run
+
+```powershell
+cd <workspace>\system-house-renderer
 uv run python -m system_house_renderer `
   --input examples\sword_topology.json `
   --output out\sword
